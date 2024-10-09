@@ -2,7 +2,6 @@ package analyzer
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	rpc "buf.build/gen/go/k8sgpt-ai/k8sgpt/grpc/go/schema/v1/schemav1grpc"
@@ -12,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 
 	"k8s.io/client-go/dynamic"
 
@@ -28,8 +28,16 @@ type Analyzer struct {
 
 func ListPolicyReports() ([]unstructured.Unstructured, []unstructured.Unstructured, error) {
 	// Create in-cluster config
-	config, err := rest.InClusterConfig()
+	// config, err := rest.InClusterConfig()
+	// if err != nil {
+	// 	fmt.Println(err)
+	// 	return nil, nil, err
+	// }
+
+	config, err := clientcmd.BuildConfigFromFlags("", "/Users/ronaldpetty/.kube/config")
+
 	if err != nil {
+		fmt.Println(err)
 		return nil, nil, err
 	}
 
@@ -100,23 +108,62 @@ func (a *Handler) Run(context.Context, *v1.AnalyzerRunRequest) (*v1.AnalyzerRunR
 	// } else {
 	// 	fmt.Printf("found %v", deps)
 	// }
-	pols, cpols, err := ListPolicyReports()
+	pols, _, _ := ListPolicyReports()
 
-	polsJsonData, err := json.Marshal(pols)
-	if err != nil {
-		fmt.Println("Error:", err)
-		return nil, err
-	} else {
-		fmt.Printf("found %s", polsJsonData)
+	// for now, just take first error from pols
+	if len(pols) == 0 {
+		return &v1.AnalyzerRunResponse{
+			Result: &v1.Result{
+				Name: "kyverno",
+				// Details: fmt.Sprintf("Kyverno looking good")
+				// Error: []*v1.ErrorDetail{
+				// 	{
+				// 		Text: fmt.Sprintf("Kyverno looking good"),
+				// 	},
+				// },
+			},
+		}, nil
 	}
 
-	cpolsJsonData, err := json.Marshal(cpols)
-	if err != nil {
-		fmt.Println("Error:", err)
-		return nil, err
+	var x any
+	x = pols[0].Object["results"]
+	fmt.Printf("%T\n", x)
+	fmt.Println(x)
+	convertedData, ok := x.([]interface{})
+	var table string
+	if !ok {
+		fmt.Println("Data is not of the expected type")
 	} else {
-		fmt.Printf("found %s", cpolsJsonData)
+		for _, item := range convertedData {
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				// Now you can access the map's fields
+				fmt.Println("Message:", itemMap["message"])
+				fmt.Println("Policy:", itemMap["policy"])
+				fmt.Println("Result:", itemMap["result"])
+				if itemMap["result"] == "fail" {
+					table = fmt.Sprintf("This policy: %s caused this result: %s; here is the message: %s", itemMap["policy"], itemMap["result"], itemMap["message"])
+				}
+				fmt.Println("Rule:", itemMap["rule"])
+				fmt.Println("Scored:", itemMap["scored"])
+			}
+		}
 	}
+
+	// polsJsonData, err := json.Marshal(pols)
+	// if err != nil {
+	// 	fmt.Println("Error:", err)
+	// 	return nil, err
+	// } else {
+	// 	fmt.Printf("found %s", polsJsonData)
+	// }
+
+	// cpolsJsonData, err := json.Marshal(cpols)
+	// if err != nil {
+	// 	fmt.Println("Error:", err)
+	// 	return nil, err
+	// } else {
+	// 	fmt.Printf("found %s", cpolsJsonData)
+	// }
 
 	// if err != nil {
 	// 	fmt.Printf("err: %v", err)
@@ -125,16 +172,17 @@ func (a *Handler) Run(context.Context, *v1.AnalyzerRunRequest) (*v1.AnalyzerRunR
 	// }
 
 	// split in ErrorDetail later
-	table := fmt.Sprintf("pols: %s, cpols: %s", polsJsonData, cpolsJsonData)[:1000]
-	//table := fmt.Sprintf("pols: %s", "errors fix them") // token limit
+	//table := fmt.Sprintf("pols: %s, cpols: %s", polsJsonData, cpolsJsonData)[:1000]
+	// data := `{"message":"validation error: label 'team' is required. rule check-team failed at path /metadata/labels/team/","policy":"require-labels","source":"kyverno"}`
+	// table := fmt.Sprintf("pols: %s", data) // token limit
 
 	return &v1.AnalyzerRunResponse{
 		Result: &v1.Result{
 			Name:    "kyverno",
-			Details: fmt.Sprintf("Kyverno reports %v", table),
+			Details: fmt.Sprintf("Kyverno reports %s", table),
 			Error: []*v1.ErrorDetail{
 				{
-					Text: fmt.Sprintf("Kyverno reports %v", table),
+					Text: fmt.Sprintf("Kyverno reports %s", table),
 				},
 			},
 		},
