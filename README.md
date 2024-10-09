@@ -1,21 +1,21 @@
 # k8sgpt-kyverno-custom-analyzer-draft
 We are comparing "integrations" versus "custom analyzers", so trying Kyverno as an example.
 
-`kubectl create -f https://github.com/kyverno/kyverno/releases/download/v1.11.1/install.yaml`
+Install Kyverno - `kubectl create -f https://github.com/kyverno/kyverno/releases/download/v1.11.1/install.yaml`
 
-`docker image build -f Dockerfile -t kyverno-ca:v0.0.0 .`
+Build this custom analyzer - `docker image build -f Dockerfile -t kyverno-ca:v0.0.0 .`
 
-`kubectl create clusterrole getdeps --resource deployments --verb get,list`
-`kubectl create clusterrolebinding getdeps --serviceaccount system:serviceaccount:default:default --clusterrole getdeps`
-`kubectl auth can-i --as system:serviceaccount:default:default list deployments`
+Setup permissions for custom analayzer (retriving kyverno reports)):
 
-`kubectl create clusterrole getpols --resource policyreports.wgpolicyk8s.io --verb get,list`
-`kubectl create clusterrolebinding getpols --serviceaccount default:default --clusterrole getpols`
-`kubectl auth can-i --as system:serviceaccount:default:default list policyreports.wgpolicyk8s.io`
+- `kubectl create clusterrole getpols --resource policyreports.wgpolicyk8s.io --verb get,list`
+- `kubectl create clusterrolebinding getpols --serviceaccount default:default --clusterrole getpols`
+- `kubectl auth can-i --as system:serviceaccount:default:default list policyreports.wgpolicyk8s.io`
 
-`kubectl create clusterrole getcpols --resource clusterpolicyreports.wgpolicyk8s.io --verb get,list`
-`kubectl create clusterrolebinding getcpols --serviceaccount default:default --clusterrole getcpols`
-`kubectl auth can-i --as system:serviceaccount:default:default list clusterpolicyreports.wgpolicyk8s.io`
+- `kubectl create clusterrole getcpols --resource clusterpolicyreports.wgpolicyk8s.io --verb get,list`
+- `kubectl create clusterrolebinding getcpols --serviceaccount default:default --clusterrole getcpols`
+- `kubectl auth can-i --as system:serviceaccount:default:default list clusterpolicyreports.wgpolicyk8s.io`
+
+Create Deployment/Service for this custom analyzer:
 
 ```
  % cat kyverno-ca.yaml 
@@ -60,13 +60,16 @@ spec:
 
 `kubectl apply -f kyverno-ca.yaml`
 
-`kubectl run client --image=ubuntu:22.04 -- tail -f /dev/null`
-`kubectl exec client -- apt update`
-`kubectl exec client -- curl -sLO https://github.com/fullstorydev/grpcurl/releases/download/v1.9.1/grpcurl_1.9.1_linux_amd64.deb`
-`kubectl exec client -- dpkg -i grpcurl_1.9.1_linux_amd64.deb`
 
-`kubectl exec client -- grpcurl --plaintext kyverno-ca:8085 schema.v1.AnalyzerService/Run`
+Setup a debug pod to confirm RPC reachability:
 
+- `kubectl run client --image=ubuntu:24.04 -- tail -f /dev/null`
+- `kubectl exec client -- sh -c 'apt update; apt install curl -y'`
+- `kubectl exec client -- curl -sLO https://github.com/fullstorydev/grpcurl/releases/download/v1.9.1/grpcurl_1.9.1_linux_amd64.deb`
+- `kubectl exec client -- dpkg -i grpcurl_1.9.1_linux_amd64.deb`
+- `kubectl exec client -- grpcurl --plaintext kyverno-ca:8085 schema.v1.AnalyzerService/Run`
+
+Install Kyverno sample ClusterPolicy. This policy is across namespaces and requires "team" label key.
 
 ```
 % cat testpol.yaml                                         
@@ -91,23 +94,13 @@ spec:
             team: "?*"
 
 kubectl apply -f testpol.yaml
-
-kubectl get policyreports,clusterpolicyreports -A
 ```
 
-```
-% k8sgpt analyze --custom-analysis --explain -b openai
- 100% |████████████████████████████████████████████████████████████████████████████████████████████| (1/1, 1 it/s)        
-AI Provider: openai
+This takes a moment before results come back.
 
-0: kyverno-ca kyverno()
-- Error: Kyverno reports pols: errors fix them
-Error: Kyverno reports policy errors, fix them.
-Solution: 
-1. Identify the specific policy errors reported by Kyverno.
-2. Review the policies and make necessary corrections to comply with Kubernetes best practices.
-3. Apply the corrected policies to resolve the errors.
-```
+`kubectl get policyreports,clusterpolicyreports -A`
+
+From laptop (assuming 30000 is reachable):
 
 ```
 /usr/local/Cellar/grpcurl/1.9.1/bin/grpcurl --plaintext localhost:30000 list

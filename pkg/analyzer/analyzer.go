@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	rpc "buf.build/gen/go/k8sgpt-ai/k8sgpt/grpc/go/schema/v1/schemav1grpc"
@@ -101,15 +102,31 @@ func (a *Handler) Run(context.Context, *v1.AnalyzerRunRequest) (*v1.AnalyzerRunR
 	// }
 	pols, cpols, err := ListPolicyReports()
 
+	polsJsonData, err := json.Marshal(pols)
 	if err != nil {
-		fmt.Printf("err: %v", err)
+		fmt.Println("Error:", err)
+		return nil, err
 	} else {
-		fmt.Printf("found %v, %v", pols, cpols)
+		fmt.Printf("found %s", polsJsonData)
 	}
 
+	cpolsJsonData, err := json.Marshal(cpols)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return nil, err
+	} else {
+		fmt.Printf("found %s", cpolsJsonData)
+	}
+
+	// if err != nil {
+	// 	fmt.Printf("err: %v", err)
+	// } else {
+	// 	fmt.Printf("found %v, %v", pols, cpols)
+	// }
+
 	// split in ErrorDetail later
-	//table := fmt.Sprintf("pols: %v, cpols: %v", pols, cpols)
-	table := fmt.Sprintf("pols: %s", "errors fix them") // token limit
+	table := fmt.Sprintf("pols: %s, cpols: %s", polsJsonData, cpolsJsonData)[:1000]
+	//table := fmt.Sprintf("pols: %s", "errors fix them") // token limit
 
 	return &v1.AnalyzerRunResponse{
 		Result: &v1.Result{
